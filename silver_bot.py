@@ -1,11 +1,11 @@
 import requests
 from bs4 import BeautifulSoup
+import os
 
-TELEGRAM_TOKEN = "8023059821:AAGGn4tcg60mOmRDMC7sI386P2BAzC-LqYk"
-CHAT_ID = "8039335944"
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8023059821:AAGGn4tcg60mOmRDMC7sI386P2BAzC-LqYk")
+CHAT_ID = os.environ.get("CHAT_ID", "8039335944")
 
 def get_silver_price():
-    # RSS에서 최신 글 제목과 링크 가져오기
     rss_url = "https://rss.blog.naver.com/wolfkickbox.xml"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -21,13 +21,11 @@ def get_silver_price():
         title = latest.find("title").text.strip()
         link = latest.find("link").text.strip()
 
-        # 본문 내용 가져오기 (모바일 버전)
         log_no = link.split("wolfkickbox/")[-1].split("?")[0]
         mobile_url = f"https://m.blog.naver.com/wolfkickbox/{log_no}"
         post_res = requests.get(mobile_url, headers=headers, timeout=10)
         post_soup = BeautifulSoup(post_res.text, "html.parser")
 
-        # 본문 텍스트 추출
         content = ""
         body = post_soup.select_one("div.se-main-container, section.se-section, div#postViewArea")
         if body:
