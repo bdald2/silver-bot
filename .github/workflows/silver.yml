@@ -1,0 +1,27 @@
+name: Silver Price Bot
+
+on:
+  schedule:
+    - cron: '3 2 * * *'  # 매일 오전 11시 3분 (한국시간 = UTC+9, 02:03 UTC)
+  workflow_dispatch:  # 수동 실행 가능
+
+jobs:
+  send-price:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 lxml
+
+      - name: Run bot
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python silver_bot.py
