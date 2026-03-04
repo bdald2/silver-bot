@@ -2,8 +2,9 @@ name: Silver Price Bot
 
 on:
   schedule:
-    - cron: '3 2 * * *'  # 매일 오전 11시 3분 (한국시간 = UTC+9, 02:03 UTC)
-  workflow_dispatch:  # 수동 실행 가능
+    - cron: '3 2 * * *'    # 매일 오전 11시 3분 (한국시간)
+    - cron: '0 * * * *'    # 매 1시간마다 새 글 체크
+  workflow_dispatch:        # 수동 실행 가능
 
 jobs:
   send-price:
@@ -20,8 +21,18 @@ jobs:
       - name: Install dependencies
         run: pip install requests beautifulsoup4 lxml
 
-      - name: Run bot
+      - name: 매일 정기 전송 (11시 3분)
+        if: github.event.schedule == '3 2 * * *' || github.event_name == 'workflow_dispatch'
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+          MODE: daily
+        run: python silver_bot.py
+
+      - name: 새 글 체크 (매시간)
+        if: github.event.schedule == '0 * * * *'
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+          MODE: check
         run: python silver_bot.py
