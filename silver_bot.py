@@ -1,10 +1,11 @@
 import requests
 from bs4 import BeautifulSoup
 import os
+import hashlib
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8023059821:AAGGn4tcg60mOmRDMC7sI386P2BAzC-LqYk")
 CHAT_ID = os.environ.get("CHAT_ID", "8039335944")
-MODE = os.environ.get("MODE", "daily")  # daily 또는 check
+MODE = os.environ.get("MODE", "daily")
 
 def get_latest_post():
     rss_url = "https://rss.blog.naver.com/wolfkickbox.xml"
@@ -36,8 +37,10 @@ def get_post_content(link):
         return "\n".join(lines[:20])
     return ""
 
-def build_message(title, link, prefix="📊 순수한금 최신 시세"):
-    content = get_post_content(link)
+def get_content_hash(content):
+    return hashlib.md5(content.encode()).hexdigest()
+
+def build_message(title, link, content, prefix="📊 순수한금 최신 시세"):
     if content:
         return f"{prefix}\n\n{title}\n\n{content}\n\n🔗 {link}"
     return f"{prefix}\n\n{title}\n\n🔗 {link}"
@@ -47,31 +50,34 @@ def send_telegram(message):
     data = {"chat_id": CHAT_ID, "text": message}
     requests.post(url, data=data)
 
-def load_last_link():
+def load_last_hash():
     try:
         with open("last_post.txt", "r") as f:
             return f.read().strip()
     except:
         return ""
 
-def save_last_link(link):
+def save_last_hash(content_hash):
     with open("last_post.txt", "w") as f:
-        f.write(link)
+        f.write(content_hash)
 
 if __name__ == "__main__":
     title, link = get_latest_post()
     if not link:
         print("게시글을 찾을 수 없습니다.")
     elif MODE == "daily":
-        msg = build_message(title, link, prefix="📊 [매일 11시] 순수한금 최신 시세")
+        content = get_post_content(link)
+        msg = build_message(title, link, content, prefix="📊 [매일 11시] 순수한금 최신 시세")
         send_telegram(msg)
         print(msg)
     elif MODE == "check":
-        last_link = load_last_link()
-        if link != last_link:
-            msg = build_message(title, link, prefix="🆕 새 글 알림!")
+        content = get_post_content(link)
+        current_hash = get_content_hash(content)
+        last_hash = load_last_hash()
+        if current_hash != last_hash:
+            msg = build_message(title, link, content, prefix="🆕 새 글 / 수정 알림!")
             send_telegram(msg)
-            save_last_link(link)
-            print(f"새 글 발견: {title}")
+            save_last_hash(current_hash)
+            print(f"변경 감지: {title}")
         else:
-            print("새 글 없음")
+            print("변경 없음")
