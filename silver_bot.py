@@ -1,83 +1,100 @@
-import requests
-from bs4 import BeautifulSoup
 import os
 import hashlib
+import json
+import requests
+import feedparser
+from datetime import datetime, timezone, timedelta
 
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8023059821:AAGGn4tcg60mOmRDMC7sI386P2BAzC-LqYk")
-CHAT_ID = os.environ.get("CHAT_ID", "8039335944")
-MODE = os.environ.get("MODE", "daily")
+# ── 설정 ──────────────────────────────────────────────
+TELEGRAM_TOKEN = os.environ.get("8023059821:AAGGn4tcg60mOmRDMC7sI386P2BAzC-LqYk")
+CHAT_ID        = os.environ.get("8039335944")
+BLOG_RSS_URL   = "https://blog.naver.com/PostRSSList.naver?blogId=sungsungkeum&widgetTypeCall=true"
+STATE_FILE     = "silver_state.json"
 
-def get_latest_post():
-    rss_url = "https://rss.blog.naver.com/wolfkickbox.xml"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    res = requests.get(rss_url, headers=headers, timeout=10)
-    soup = BeautifulSoup(res.text, "xml")
-    items = soup.find_all("item")
-    if not items:
-        return None, None
-    latest = items[0]
-    title = latest.find("title").text.strip()
-    link = latest.find("link").text.strip()
-    return title, link
+KST = timezone(timedelta(hours=9))
 
-def get_post_content(link):
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    log_no = link.split("wolfkickbox/")[-1].split("?")[0]
-    mobile_url = f"https://m.blog.naver.com/wolfkickbox/{log_no}"
-    post_res = requests.get(mobile_url, headers=headers, timeout=10)
-    post_soup = BeautifulSoup(post_res.text, "html.parser")
-    body = post_soup.select_one("div.se-main-container, section.se-section, div#postViewArea")
-    if body:
-        lines = body.get_text(separator="\n").strip().split("\n")
-        lines = [l.strip() for l in lines if l.strip()]
-        return "\n".join(lines[:20])
-    return ""
+# 새벽 0시~7시(KST) 사이에는 알림 발송 안 함
+QUIET_START = 0   # 0시
+QUIET_END   = 7   # 7시
 
-def get_content_hash(content):
-    return hashlib.md5(content.encode()).hexdigest()
-
-def build_message(title, link, content, prefix="📊 순수한금 최신 시세"):
-    if content:
-        return f"{prefix}\n\n{title}\n\n{content}\n\n🔗 {link}"
-    return f"{prefix}\n\n{title}\n\n🔗 {link}"
-
-def send_telegram(message):
+# ── 유틸 함수 ──────────────────────────────────────────
+def send_telegram(msg: str):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    data = {"chat_id": CHAT_ID, "text": message}
-    requests.post(url, data=data)
+    requests.post(url, json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"})
 
-def load_last_hash():
-    try:
-        with open("last_post.txt", "r") as f:
-            return f.read().strip()
-    except:
-        return ""
+def compute_hash(title: str, summary: str) -> str:
+    """제목+내용 기반 해시 → 타임스탬프 변경 무시"""
+    raw = (title + summary).encode("utf-8")
+    return hashlib.md5(raw).hexdigest()
 
-def save_last_hash(content_hash):
-    with open("last_post.txt", "w") as f:
-        f.write(content_hash)
+def load_state() -> dict:
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+def save_state(state: dict):
+    with open(STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+
+def is_quiet_time() -> bool:
+    """현재 KST 시각이 새벽 조용한 시간대인지 확인"""
+    now_hour = datetime.now(KST).hour
+    return QUIET_START <= now_hour < QUIET_END
+
+# ── 메인 로직 ──────────────────────────────────────────
+def check_blog():
+    now_kst = datetime.now(KST)
+    print(f"[{now_kst.strftime('%Y-%m-%d %H:%M KST')}] 순수한금 블로그 확인 중...")
+
+    feed = feedparser.parse(BLOG_RSS_URL)
+    if not feed.entries:
+        print("RSS 항목 없음, 종료")
+        return
+
+    state = load_state()
+    changed_posts = []
+
+    for entry in feed.entries[:5]:  # 최신 5개만 확인
+        post_id  = entry.get("id") or entry.get("link", "")
+        title    = entry.get("title", "")
+        summary  = entry.get("summary", "") or entry.get("description", "")
+        link     = entry.get("link", "")
+
+        new_hash = compute_hash(title, summary)
+        old_hash = state.get(post_id, {}).get("hash")
+
+        if new_hash != old_hash:
+            if old_hash is None:
+                action = "🆕 새 글"
+            else:
+                action = "✏️ 수정된 글"
+            changed_posts.append((action, title, link))
+
+        # 상태 업데이트 (타임스탬프 아닌 해시 기준)
+        state[post_id] = {"hash": new_hash, "title": title}
+
+    save_state(state)
+
+    if not changed_posts:
+        print("변경사항 없음")
+        return
+
+    # ── 새벽 시간대 필터 ──
+    if is_quiet_time():
+        print(f"새벽 조용한 시간대({QUIET_START}~{QUIET_END}시 KST) — 알림 생략")
+        return
+
+    # ── 텔레그램 발송 ──
+    for action, title, link in changed_posts:
+        msg = (
+            f"{action} 감지 — 순수한금 블로그\n\n"
+            f"📌 <b>{title}</b>\n"
+            f"🔗 {link}\n\n"
+            f"⏰ {now_kst.strftime('%Y-%m-%d %H:%M')} KST"
+        )
+        send_telegram(msg)
+        print(f"알림 발송: {action} — {title}")
 
 if __name__ == "__main__":
-    title, link = get_latest_post()
-    if not link:
-        print("게시글을 찾을 수 없습니다.")
-    elif MODE == "daily":
-        content = get_post_content(link)
-        msg = build_message(title, link, content, prefix="📊 [매일 11시] 순수한금 최신 시세")
-        send_telegram(msg)
-        print(msg)
-    elif MODE == "check":
-        content = get_post_content(link)
-        current_hash = get_content_hash(content)
-        last_hash = load_last_hash()
-        if current_hash != last_hash:
-            msg = build_message(title, link, content, prefix="🆕 새 글 / 수정 알림!")
-            send_telegram(msg)
-            save_last_hash(current_hash)
-            print(f"변경 감지: {title}")
-        else:
-            print("변경 없음")
+    check_blog()
