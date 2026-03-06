@@ -28,6 +28,9 @@ jobs:
           restore-keys: |
             last-post-cache
 
+      - name: last_post.txt 없으면 빈 파일 생성
+        run: touch last_post.txt
+
       - name: 매일 정기 전송 (11시 3분)
         if: github.event.schedule == '3 2 * * *' || github.event_name == 'workflow_dispatch'
         env:
