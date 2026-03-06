@@ -1,5 +1,4 @@
 name: Silver Price Bot
-
 on:
   schedule:
     - cron: '3 2 * * *'    # 매일 오전 11시 3분 (한국시간)
@@ -21,6 +20,14 @@ jobs:
       - name: Install dependencies
         run: pip install requests beautifulsoup4 lxml
 
+      - name: 캐시 불러오기 (last_post.txt 유지)
+        uses: actions/cache/restore@v3
+        with:
+          path: last_post.txt
+          key: last-post-cache
+          restore-keys: |
+            last-post-cache
+
       - name: 매일 정기 전송 (11시 3분)
         if: github.event.schedule == '3 2 * * *' || github.event_name == 'workflow_dispatch'
         env:
@@ -36,3 +43,10 @@ jobs:
           CHAT_ID: ${{ secrets.CHAT_ID }}
           MODE: check
         run: python silver_bot.py
+
+      - name: 캐시 저장 (last_post.txt 보존)
+        if: always()
+        uses: actions/cache/save@v3
+        with:
+          path: last_post.txt
+          key: last-post-cache-${{ github.run_id }}
