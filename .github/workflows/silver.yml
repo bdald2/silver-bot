@@ -52,4 +52,4 @@ jobs:
         uses: actions/cache/save@v3
         with:
           path: last_post.txt
-          key: last-post-cache-${{ github.run_id }}
+          key: last-post-cache

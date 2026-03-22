@@ -4,8 +4,8 @@ import os
 import re
 import hashlib
 
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8023059821:AAGGn4tcg60mOmRDMC7sI386P2BAzC-LqYk")
-CHAT_ID = os.environ.get("CHAT_ID", "8039335944")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
 MODE = os.environ.get("MODE", "daily")
 
 
@@ -101,14 +101,16 @@ def build_message(title, link, content, prefix="📊 은 시세"):
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": CHAT_ID, "text": message}
-    requests.post(url, data=data)
+    res = requests.post(url, data=data, timeout=10)
+    if not res.ok:
+        print(f"텔레그램 전송 실패: {res.status_code} {res.text}")
 
 
 def load_last_hash():
     try:
         with open("last_post.txt", "r") as f:
             return f.read().strip()
-    except:
+    except FileNotFoundError:
         return ""
 
 
@@ -125,6 +127,7 @@ if __name__ == "__main__":
         content = get_post_content(link)
         msg = build_message(title, link, content, prefix="📊 [매일 11시] 은 최신 시세")
         send_telegram(msg)
+        save_last_hash(get_price_hash(content))
         print(msg)
     elif MODE == "check":
         content = get_post_content(link)
