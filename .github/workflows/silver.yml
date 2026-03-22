@@ -28,8 +28,16 @@ jobs:
           restore-keys: |
             last-post-cache
 
+      - name: 캐시 불러오기 (last_gold_post.txt 유지)
+        uses: actions/cache/restore@v3
+        with:
+          path: last_gold_post.txt
+          key: last-gold-post-cache
+          restore-keys: |
+            last-gold-post-cache
+
       - name: last_post.txt 없으면 빈 파일 생성
-        run: touch last_post.txt
+        run: touch last_post.txt && touch last_gold_post.txt
 
       - name: 매일 정기 전송 (11시 3분)
         if: github.event.schedule == '3 2 * * *' || github.event_name == 'workflow_dispatch'
@@ -53,3 +61,10 @@ jobs:
         with:
           path: last_post.txt
           key: last-post-cache-${{ github.run_id }}
+
+      - name: 캐시 저장 (last_gold_post.txt 보존)
+        if: always()
+        uses: actions/cache/save@v3
+        with:
+          path: last_gold_post.txt
+          key: last-gold-post-cache-${{ github.run_id }}
