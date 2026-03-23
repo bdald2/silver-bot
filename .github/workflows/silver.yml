@@ -11,10 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
@@ -22,7 +22,7 @@ jobs:
         run: pip install requests beautifulsoup4 lxml
 
       - name: 캐시 불러오기 (은 시세 해시 유지)
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v4
         with:
           path: last_silver_post.txt
           key: last-silver-post-cache
@@ -30,7 +30,7 @@ jobs:
             last-silver-post-cache
 
       - name: 캐시 불러오기 (금 시세 해시 유지)
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v4
         with:
           path: last_gold_post.txt
           key: last-gold-post-cache
@@ -77,14 +77,14 @@ jobs:
 
       - name: 캐시 저장 - 은 시세 해시
         if: always()
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v4
         with:
           path: last_silver_post.txt
           key: last-silver-post-cache-${{ github.run_id }}
 
       - name: 캐시 저장 - 금 시세 해시
         if: always()
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v4
         with:
           path: last_gold_post.txt
           key: last-gold-post-cache-${{ github.run_id }}
