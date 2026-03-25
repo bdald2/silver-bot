@@ -2,13 +2,16 @@ name: Silver & Gold Price Bot
 
 on:
   schedule:
-    - cron: '3 2 * * *'   # 매일 오전 11시 3분 (한국시간)
+    - cron: '3 2 * * *'   # 매일 오전 11시 3분 KST (UTC 02:03)
     - cron: '0 * * * *'   # 매 1시간마다 새 글 체크
-  workflow_dispatch:       # 수동 실행 가능
+  workflow_dispatch:        # 수동 실행
 
 jobs:
-  send-price:
+
+  daily-price:
     runs-on: ubuntu-latest
+    if: github.event.schedule == '3 2 * * *' || github.event_name == 'workflow_dispatch'
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,70 +24,67 @@ jobs:
       - name: Install dependencies
         run: pip install requests beautifulsoup4 lxml
 
-      - name: 캐시 불러오기 (은 시세 해시 유지)
-        uses: actions/cache/restore@v4
-        with:
-          path: last_silver_post.txt
-          key: last-silver-post-cache
-          restore-keys: |
-            last-silver-post-cache
-
-      - name: 캐시 불러오기 (금 시세 해시 유지)
-        uses: actions/cache/restore@v4
-        with:
-          path: last_gold_post.txt
-          key: last-gold-post-cache
-          restore-keys: |
-            last-gold-post-cache
-
-      - name: last_silver_post.txt 없으면 빈 파일 생성
-        run: touch last_silver_post.txt
-
-      - name: last_gold_post.txt 없으면 빈 파일 생성
-        run: touch last_gold_post.txt
-
-      - name: 매일 정기 전송 - 은 시세 (11시 3분)
-        if: github.event.schedule == '3 2 * * *' || github.event_name == 'workflow_dispatch'
+      - name: 매일 정기 전송 - 은 시세
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           MODE: daily
         run: python silver_bot.py
 
-      - name: 매일 정기 전송 - 금 시세 (11시 3분)
-        if: github.event.schedule == '3 2 * * *' || github.event_name == 'workflow_dispatch'
+      - name: 매일 정기 전송 - 금 시세
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           MODE: gold_daily
         run: python silver_bot.py
 
-      - name: 새 글 체크 - 은 시세 (매시간)
-        if: github.event.schedule == '0 * * * *'
+  check-price:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 * * * *'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 lxml
+
+      - name: 캐시 복원 - 은 시세 해시
+        uses: actions/cache@v4
+        with:
+          path: last_silver_post.txt
+          key: silver-hash-${{ github.run_id }}
+          restore-keys: |
+            silver-hash-
+
+      - name: 캐시 복원 - 금 시세 해시
+        uses: actions/cache@v4
+        with:
+          path: last_gold_post.txt
+          key: gold-hash-${{ github.run_id }}
+          restore-keys: |
+            gold-hash-
+
+      - name: 해시 파일 초기화 (없을 경우)
+        run: |
+          touch last_silver_post.txt
+          touch last_gold_post.txt
+
+      - name: 새 글 체크 - 은 시세
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           MODE: check
         run: python silver_bot.py
 
-      - name: 새 글 체크 - 금 시세 (매시간)
-        if: github.event.schedule == '0 * * * *'
+      - name: 새 글 체크 - 금 시세
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           MODE: gold_check
         run: python silver_bot.py
-
-      - name: 캐시 저장 - 은 시세 해시
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: last_silver_post.txt
-          key: last-silver-post-cache-${{ github.run_id }}
-
-      - name: 캐시 저장 - 금 시세 해시
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: last_gold_post.txt
-          key: last-gold-post-cache-${{ github.run_id }}
