@@ -2,9 +2,9 @@ name: Silver & Gold Price Bot
 
 on:
   schedule:
-    - cron: '3 2 * * *'   # 매일 오전 11시 3분 KST (UTC 02:03)
-    - cron: '0 * * * *'   # 매 1시간마다 새 글 체크
-  workflow_dispatch:        # 수동 실행
+    - cron: '3 2 * * *'       # 매일 오전 11시 3분 KST (UTC 02:03)
+    - cron: '0,30 * * * *'    # 매 30분마다 새 글 체크 (기존 60분→30분)
+  workflow_dispatch:          # 수동 실행
 
 jobs:
 
@@ -40,7 +40,7 @@ jobs:
 
   check-price:
     runs-on: ubuntu-latest
-    if: github.event.schedule == '0 * * * *'
+    if: github.event.schedule == '0,30 * * * *'
 
     steps:
       - name: Checkout
@@ -54,37 +54,21 @@ jobs:
       - name: Install dependencies
         run: pip install requests beautifulsoup4 lxml
 
-      - name: 캐시 복원 - 은 시세 해시
-        uses: actions/cache@v4
+      - name: Restore cache (last_post.txt)
+        uses: actions/cache@v3
         with:
-          path: last_silver_post.txt
-          key: silver-hash-${{ github.run_id }}
-          restore-keys: |
-            silver-hash-
+          path: last_post.txt
+          key: silver-last-post-v1
 
-      - name: 캐시 복원 - 금 시세 해시
-        uses: actions/cache@v4
-        with:
-          path: last_gold_post.txt
-          key: gold-hash-${{ github.run_id }}
-          restore-keys: |
-            gold-hash-
-
-      - name: 해시 파일 초기화 (없을 경우)
-        run: |
-          touch last_silver_post.txt
-          touch last_gold_post.txt
-
-      - name: 새 글 체크 - 은 시세
+      - name: 시세 변동 체크 (매 30분)
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           MODE: check
         run: python silver_bot.py
 
-      - name: 새 글 체크 - 금 시세
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
-          MODE: gold_check
-        run: python silver_bot.py
+      - name: Save cache (last_post.txt)
+        uses: actions/cache@v3
+        with:
+          path: last_post.txt
+          key: silver-last-post-v1
