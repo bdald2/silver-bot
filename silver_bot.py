@@ -13,13 +13,12 @@ RSS_URL = f"https://rss.blog.naver.com/{BLOG_ID}.xml"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
 SILVER_KEYWORDS = r'은매입|은\s*판매|실버|silver|은\s*매입|은그래뉼|은바'
-GOLD_KEYWORDS   = r'금매입|금\s*판매|골드|순금|gold|금\s*매입|골드바|금바'
+GOLD_KEYWORDS   = r'금매입|금\s*판매|골드|순금|순수한금|gold|금\s*매입|골드바|금바'
 
-SILVER_CAPTURE  = r'은바|실버|은판|silver|은\s*매입|은그래뉼'
-SILVER_STOP     = r'순금|골드바|금바|팔라듐|백금'
-
-GOLD_CAPTURE    = r'순금|골드바|금바|금\s*매입|금판|골드'
-GOLD_STOP       = r'은바|실버|은판|팔라듐|백금'
+SILVER_CAPTURE = r'은바|실버|은판|silver|은\s*매입|은그래뉼'
+SILVER_STOP    = r'순금|골드바|금바|팔라듐|백금'
+GOLD_CAPTURE   = r'순금|순수한금|골드바|금바|금\s*매입|금판|골드'
+GOLD_STOP      = r'은바|실버|은판|팔라듐|백금'
 
 
 def get_latest_post(keyword_pattern):
@@ -30,13 +29,11 @@ def get_latest_post(keyword_pattern):
         items = soup.find_all("item")
         if not items:
             return None, None
-
         for item in items[:20]:
             title = item.find("title").text.strip()
             if re.search(keyword_pattern, title, re.IGNORECASE):
                 link = item.find("link").text.strip()
                 return title, link
-
         latest = items[0]
         return latest.find("title").text.strip(), latest.find("link").text.strip()
     except Exception as e:
@@ -51,7 +48,6 @@ def get_post_content(link, capture_pattern, stop_pattern):
         mobile_url = f"https://m.blog.naver.com/{BLOG_ID}/{log_no}"
         post_res = requests.get(mobile_url, headers=HEADERS, timeout=10)
         post_soup = BeautifulSoup(post_res.text, "html.parser")
-
         body = (
             post_soup.select_one("div.se-main-container")
             or post_soup.select_one("div#postViewArea")
@@ -61,10 +57,8 @@ def get_post_content(link, capture_pattern, stop_pattern):
         if not body:
             print("[경고] 포스트 본문을 찾을 수 없습니다.")
             return ""
-
         raw_lines = body.get_text(separator="\n").split("\n")
         lines = [l.strip() for l in raw_lines if l.strip()]
-
         result_lines = []
         capturing = False
         for line in lines:
@@ -74,23 +68,19 @@ def get_post_content(link, capture_pattern, stop_pattern):
                 break
             if capturing:
                 result_lines.append(line)
-
         if not result_lines:
             result_lines = [l for l in lines if re.search(r'[\d,]+\s*원', l)]
-
         cleaned = []
         i = 0
         while i < len(result_lines):
             line = result_lines[i]
-            if (re.match(r'^[\d,]+$', line)
-                    and i + 1 < len(result_lines)
+            if (re.match(r'^[\d,]+$', line) and i + 1 < len(result_lines)
                     and re.match(r'^원', result_lines[i + 1])):
                 cleaned.append(line + result_lines[i + 1])
                 i += 2
             else:
                 cleaned.append(line)
                 i += 1
-
         return "\n".join(cleaned[:15]) if cleaned else ""
     except Exception as e:
         print(f"[오류] 포스트 내용 추출 실패: {e}")
@@ -103,11 +93,13 @@ def extract_prices(content):
     return "|".join(prices)
 
 
-def get_price_hash(content):
+def get_content_hash(link, content):
+    """포스트 링크 + 가격 정보로 해시 생성 → 새 게시글 OR 가격변동 모두 감지"""
     prices = extract_prices(content)
     if not prices:
         return ""
-    return hashlib.md5(prices.encode()).hexdigest()
+    combined = link + "|" + prices
+    return hashlib.md5(combined.encode()).hexdigest()
 
 
 def build_message(title, link, content, prefix="📊 시세"):
@@ -141,10 +133,10 @@ def load_last_hash(filename):
         return ""
 
 
-def save_last_hash(price_hash, filename):
+def save_last_hash(content_hash, filename):
     with open(filename, "w") as f:
-        f.write(price_hash)
-    print(f"[캐시] {filename} 저장: {price_hash[:8]}...")
+        f.write(content_hash)
+    print(f"[캐시] {filename} 저장: {content_hash[:8]}...")
 
 
 if __name__ == "__main__":
@@ -176,21 +168,19 @@ if __name__ == "__main__":
             print("은 게시글을 찾을 수 없습니다.")
         else:
             content = get_post_content(link, SILVER_CAPTURE, SILVER_STOP)
-            current_hash = get_price_hash(content)
-            last_hash    = load_last_hash("last_silver_post.txt")
-
+            current_hash = get_content_hash(link, content)
+            last_hash = load_last_hash("last_silver_post.txt")
             print(f"현재 해시: {current_hash[:8] if current_hash else '(추출 실패)'}")
             print(f"이전 해시: {last_hash[:8] if last_hash else '(없음)'}")
-
             if not current_hash:
                 print("[경고] 가격 정보를 추출하지 못했습니다. 해시 저장 생략.")
             elif current_hash != last_hash:
-                msg = build_message(title, link, content, prefix="🆕 은 시세 변경 알림!")
+                msg = build_message(title, link, content, prefix="🆕 은 새글/시세 변경 알림!")
                 send_telegram(msg)
                 save_last_hash(current_hash, "last_silver_post.txt")
-                print(f"은 시세 변경 감지: {title}")
+                print(f"은 변경 감지: {title}")
             else:
-                print("은 시세 변경 없음")
+                print("은 변경 없음")
 
     elif MODE == "gold_check":
         title, link = get_latest_post(GOLD_KEYWORDS)
@@ -198,21 +188,19 @@ if __name__ == "__main__":
             print("금 게시글을 찾을 수 없습니다.")
         else:
             content = get_post_content(link, GOLD_CAPTURE, GOLD_STOP)
-            current_hash = get_price_hash(content)
-            last_hash    = load_last_hash("last_gold_post.txt")
-
+            current_hash = get_content_hash(link, content)
+            last_hash = load_last_hash("last_gold_post.txt")
             print(f"현재 해시: {current_hash[:8] if current_hash else '(추출 실패)'}")
             print(f"이전 해시: {last_hash[:8] if last_hash else '(없음)'}")
-
             if not current_hash:
                 print("[경고] 가격 정보를 추출하지 못했습니다. 해시 저장 생략.")
             elif current_hash != last_hash:
-                msg = build_message(title, link, content, prefix="🆕 금 시세 변경 알림!")
+                msg = build_message(title, link, content, prefix="🆕 금 새글/시세 변경 알림!")
                 send_telegram(msg)
                 save_last_hash(current_hash, "last_gold_post.txt")
-                print(f"금 시세 변경 감지: {title}")
+                print(f"금 변경 감지: {title}")
             else:
-                print("금 시세 변경 없음")
+                print("금 변경 없음")
 
     else:
         print(f"[오류] 알 수 없는 MODE: {MODE}")
