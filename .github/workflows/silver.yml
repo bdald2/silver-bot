@@ -22,18 +22,11 @@ jobs:
       - name: Install dependencies
         run: pip install requests beautifulsoup4 lxml
 
-      - name: 매일 정기 전송 - 은 시세
+      - name: ë§¤ì¼ ì ê¸° ì ì¡ - ì/ê¸ ìì¸ (íµí© 1ê±´)
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
-          MODE: daily
-        run: python silver_bot.py
-
-      - name: 매일 정기 전송 - 금 시세
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
-          MODE: gold_daily
+          MODE: combined_daily
         run: python silver_bot.py
 
   check-price:
@@ -51,34 +44,27 @@ jobs:
       - name: Install dependencies
         run: pip install requests beautifulsoup4 lxml
 
-      - name: Restore cache (silver & gold hash)
+      - name: Restore cache (silver & gold state)
         uses: actions/cache/restore@v4
         with:
           path: |
-            last_silver_post.txt
-            last_gold_post.txt
-          key: price-hash-${{ github.run_id }}
+            last_silver_state.txt
+            last_gold_state.txt
+          key: price-state-${{ github.run_id }}
           restore-keys: |
-            price-hash-
+            price-state-
 
-      - name: 은 시세 변동 체크 (매 30분)
+      - name: ì/ê¸ ìì¸ ë³ë ì²´í¬ (ë§¤ 30ë¶, íµí© 1ê±´)
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
-          MODE: check
+          MODE: combined_check
         run: python silver_bot.py
 
-      - name: 금 시세 변동 체크 (매 30분)
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
-          MODE: gold_check
-        run: python silver_bot.py
-
-      - name: Save cache (silver & gold hash)
+      - name: Save cache (silver & gold state)
         uses: actions/cache/save@v4
         with:
           path: |
-            last_silver_post.txt
-            last_gold_post.txt
-          key: price-hash-${{ github.run_id }}
+            last_silver_state.txt
+            last_gold_state.txt
+          key: price-state-${{ github.run_id }}
