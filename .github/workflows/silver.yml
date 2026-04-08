@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: pip install requests beautifulsoup4 lxml
 
-      - name: ë§¤ì¼ ì ê¸° ì ì¡ - ì/ê¸ ìì¸ (íµí© 1ê±´)
+      - name: Daily send - silver/gold combined
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
@@ -54,7 +54,7 @@ jobs:
           restore-keys: |
             price-state-
 
-      - name: ì/ê¸ ìì¸ ë³ë ì²´í¬ (ë§¤ 30ë¶, íµí© 1ê±´)
+      - name: Check price change - combined
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
