@@ -104,21 +104,40 @@ def get_content_hash(link, content):
     return hashlib.md5(combined.encode()).hexdigest()
 
 
+def _parse_price_line(line):
+    m = re.search(r'([\d,]+)\s*원', line)
+    if not m:
+        return line.strip(), None
+    try:
+        num = int(m.group(1).replace(',', ''))
+    except ValueError:
+        return line.strip(), None
+    prefix = line[:m.start()].strip()
+    suffix = line[m.end():].strip()
+    return f"{prefix}||{suffix}", num
+
+
 def mark_changed_lines(old_link, old_content, new_link, new_content):
-    """변경된 가격 라인에 (변동) 표시 추가.
-    - 링크가 다르면 새 포스트이므로 (변동) 표시 없이 반환
-    - 링크가 같고 가격이 달라지면 해당 라인에 (변동) 표시
-    """
     if old_link != new_link or not old_content:
         return new_content
-    old_lines = set(old_content.split("\n"))
-    new_lines = new_content.split("\n")
+    old_map = {}
+    for l in old_content.split("\n"):
+        label, num = _parse_price_line(l)
+        if num is not None and label:
+            old_map[label] = num
     marked = []
-    for line in new_lines:
-        if re.search(r'[\d,]+\s*원', line) and line not in old_lines:
-            marked.append(line + " (변동)")
-        else:
+    for line in new_content.split("\n"):
+        label, num = _parse_price_line(line)
+        if num is None or not label:
             marked.append(line)
+            continue
+        old_num = old_map.get(label)
+        if old_num is None or old_num == num:
+            marked.append(line)
+        elif num > old_num:
+            marked.append(f"{line} 🔺 (변동)")
+        else:
+            marked.append(f"{line} 🔻 (변동)")
     return "\n".join(marked)
 
 
@@ -250,17 +269,17 @@ if __name__ == "__main__":
     elif MODE == "combined_daily":
         silver_title, silver_link = get_latest_post(SILVER_KEYWORDS)
         gold_title, gold_link = get_latest_post(GOLD_KEYWORDS)
-        parts = ["📊 [매일 11시] 은/금 최신 시세"]
+        parts = ["📊 [매일 11시] 금/은 최신 시세"]
+        if gold_link:
+            gold_content = get_post_content(gold_link, GOLD_CAPTURE, GOLD_STOP)
+            parts.append(f"🥇 [금 시세]\n{gold_content}")
+        else:
+            parts.append("🥇 [금 시세]\n(데이터 없음)")
         if silver_link:
             silver_content = get_post_content(silver_link, SILVER_CAPTURE, SILVER_STOP)
             parts.append(f"🥈 [은 시세]\n{silver_content}\n🔗 {silver_link}")
         else:
             parts.append("🥈 [은 시세]\n(데이터 없음)")
-        if gold_link:
-            gold_content = get_post_content(gold_link, GOLD_CAPTURE, GOLD_STOP)
-            parts.append(f"🥇 [금 시세]\n{gold_content}\n🔗 {gold_link}")
-        else:
-            parts.append("🥇 [금 시세]\n(데이터 없음)")
         msg = "\n\n".join(parts)
         send_telegram(msg)
         print(msg)
@@ -319,11 +338,11 @@ if __name__ == "__main__":
 
         # --- 변동 있으면 통합 메시지 1개 발송 ---
         if silver_changed or gold_changed:
-            parts = ["🔔 은/금 시세 변동 알림!"]
+            parts = ["🔔 금/은 시세 변동 알림!"]
+            if gold_changed:
+                parts.append(f"🥇 [금 시세]\n{gold_marked_content}")
             if silver_changed:
                 parts.append(f"🥈 [은 시세]\n{silver_marked_content}\n🔗 {silver_link}")
-            if gold_changed:
-                parts.append(f"🥇 [금 시세]\n{gold_marked_content}\n🔗 {gold_link}")
             msg = "\n\n".join(parts)
             send_telegram(msg)
             print(msg)
