@@ -197,14 +197,35 @@ def save_current_prices(filepath: str, prices: list) -> None:
 
 
 # ───────── 메시지 ─────────
-def build_combined_message(title, link, silver_content, gold_content, prefix) -> str:
-    sections = []
-    if silver_content:
-        sections.append(f"【은】\n{silver_content}")
-    if gold_content:
-        sections.append(f"【금】\n{gold_content}")
-    body = "\n\n".join(sections) if sections else ""
-    return f"{prefix}\n\n{title}\n\n{body}\n\n🔗 {link}"
+def build_combined_message(
+    title: str,
+    link: str,
+    silver_content: str,
+    silver_prices: list,
+    gold_content: str,
+    gold_prices: list,
+    head_line: str,
+) -> str:
+    """이전 버전(🔔 헤더 + 🥇 금 / 🥈 은 섹션 + 구분선 + 링크) 형식으로 메시지 빌드.
+
+    - 가격이 정상 추출된 섹션만 출력 (빈/오인 추출 섹션은 스킵)
+    - 금이 먼저, 은이 나중 (이전 버전 순서 그대로)
+    - 시간대는 KST 명시
+    """
+    parts = []
+    parts.append(f"🔔 금/은 시세 변동 알림!\n{head_line}\n({now_kst_str()})")
+
+    if title:
+        parts.append(title)
+
+    if gold_content and gold_prices:
+        parts.append(f"🥇 [금 시세]\n{gold_content}")
+    if silver_content and silver_prices:
+        parts.append(f"🥈 [은 시세]\n{silver_content}")
+
+    parts.append("------------------------------------------")
+    parts.append(f"🔗 {link}")
+    return "\n\n".join(parts)
 
 
 def send_telegram(message: str) -> None:
@@ -257,8 +278,15 @@ def main() -> None:
     else:
         head_line = f"금 {gold_dir}"
 
-    prefix = f"🚨 시세 변경 알림\n{head_line}\n({now_kst_str()})"
-    msg = build_combined_message(title, link, silver_content, gold_content, prefix)
+    msg = build_combined_message(
+        title=title,
+        link=link,
+        silver_content=silver_content,
+        silver_prices=silver_prices,
+        gold_content=gold_content,
+        gold_prices=gold_prices,
+        head_line=head_line,
+    )
     send_telegram(msg)
 
     if silver_prices:
