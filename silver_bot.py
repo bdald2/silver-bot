@@ -260,11 +260,12 @@ def compact_gold_lines(gold_text: str) -> str:
 
 
 def mark_changed_lines(content: str, current_prices: list, last_prices: list) -> str:
-    """가격이 변경된 줄 끝에 '(변동)' 마킹 추가.
+    """가격이 변경된 줄 끝에 방향 이모지 마킹 추가.
 
     - 줄별로 등장하는 4자리 이상 가격을 순서대로 매칭하여
       직전 캐시(last_prices)와 같은 인덱스 위치의 값과 비교
-    - 다르거나 신규 인덱스면 해당 줄 끝에 '(변동)' 추가
+    - 인상된 가격: 🔥↑ / 인하된 가격: ❄️↓
+    - 줄 내 첫 번째로 변경된 가격의 방향을 해당 줄 전체 마커로 사용
     - last_prices가 비어 있으면 '신규' 상태로 보고 마킹하지 않음
     - current_prices와 content는 동일 순서로 가격이 등장해야 함 (이 봇 형식 보장)
     """
@@ -281,13 +282,18 @@ def mark_changed_lines(content: str, current_prices: list, last_prices: list) ->
             if n.isdigit() and len(n) >= 4:
                 line_prices.append(int(n))
         if line_prices:
-            changed = False
+            marker = ""
             for p in line_prices:
-                if idx >= len(last_prices) or last_prices[idx] != p:
-                    changed = True
+                if not marker:  # 줄 내 첫 변경 가격의 방향만 사용
+                    if idx >= len(last_prices):
+                        marker = " 🔥↑"
+                    elif p > last_prices[idx]:
+                        marker = " 🔥↑"
+                    elif p < last_prices[idx]:
+                        marker = " ❄️↓"
                 idx += 1
-            if changed:
-                line = f"{line} (변동)"
+            if marker:
+                line = f"{line}{marker}"
         out.append(line)
     return '\n'.join(out)
 
@@ -499,6 +505,21 @@ def main() -> None:
             silver_content_orig,
             silver_post[0],
             silver_post[1],
+        )
+    if gold_changed and gold_post:
+        save_current_state(
+            LAST_GOLD_FILE,
+            gold_prices,
+            gold_content_orig,
+            gold_post[0],
+            gold_post[1],
+        )
+
+    print(f"  ✓ 시세 변경 감지 — 텔레그램 발송 완료")
+
+
+if __name__ == "__main__":
+    main()
         )
     if gold_changed and gold_post:
         save_current_state(
