@@ -520,18 +520,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-        )
-    if gold_changed and gold_post:
-        save_current_state(
-            LAST_GOLD_FILE,
-            gold_prices,
-            gold_content_orig,
-            gold_post[0],
-            gold_post[1],
-        )
-
-    print(f"  ✓ 시세 변경 감지 — 텔레그램 발송 완료")
-
-
-if __name__ == "__main__":
-    main()
