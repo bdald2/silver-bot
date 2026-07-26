@@ -2,8 +2,12 @@ name: Silver & Gold Price Bot
 
 on:
   schedule:
-    - cron: '17,47 * * * 1-5'
+    - cron: '17,47 * * * 1-5'   # KST 평일 매시 :17, :47 (비-라운드 분으로 큐 혼잡 회피)
   workflow_dispatch:
+
+# keepalive 빈 커밋 push를 위해 쓰기 권한 필요
+permissions:
+  contents: write
 
 jobs:
   check-price:
@@ -12,6 +16,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # keepalive에서 마지막 커밋 시각 조회 및 push 안정성 확보
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -45,3 +51,27 @@ jobs:
             last_silver_state.txt
             last_gold_state.txt
           key: price-state-${{ github.run_id }}
+
+      # ===== keepalive =====
+      # GitHub은 리포지토리 커밋 활동이 60일간 없으면 schedule 워크플로를 자동 비활성화한다.
+      # 마지막 커밋 후 50일이 지나면 빈 커밋을 push해 무활동 타이머를 리셋한다.
+      # 봇 실행이 실패해도 keepalive는 반드시 돌아야 하므로 always() 사용.
+      - name: Keepalive (무활동 자동 비활성화 방지)
+        if: always() && github.event_name == 'schedule'
+        run: |
+          set -e
+          LAST_COMMIT_TS=$(git log -1 --format=%ct)
+          NOW_TS=$(date +%s)
+          ELAPSED_DAYS=$(( (NOW_TS - LAST_COMMIT_TS) / 86400 ))
+          echo "[keepalive] 현재 시각: $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S KST')"
+          echo "[keepalive] 마지막 커밋 후 경과: ${ELAPSED_DAYS}일"
+
+          if [ "$ELAPSED_DAYS" -ge 50 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "chore: keepalive (경과 ${ELAPSED_DAYS}일) - schedule 자동 비활성화 방지"
+            git push
+            echo "[keepalive] 빈 커밋 push 완료 - 무활동 타이머 리셋됨"
+          else
+            echo "[keepalive] 조건 미충족(50일 미만) - 아무것도 하지 않음"
+          fi
