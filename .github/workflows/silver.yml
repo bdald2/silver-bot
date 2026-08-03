@@ -8,8 +8,8 @@ on:
     - cron: '17,47 * * * *'
   workflow_dispatch:
     inputs:
-      test_notify:
-        description: '확인용 테스트 알림 1회 발송 (시세 변경과 무관, 캐시 미갱신)'
+      force_notify:
+        description: '알림 1회 강제 발송 (시세 변경 여부 무관, 캐시 미갱신)'
         type: boolean
         default: false
 
@@ -51,7 +51,7 @@ jobs:
           CHAT_ID: ${{ secrets.CHAT_ID }}
           MODE: combined_check
           # 스케줄 실행 시 inputs가 없어 빈 문자열이 되고, event_name 조건으로 이중 차단
-          TEST_NOTIFY: ${{ github.event_name == 'workflow_dispatch' && inputs.test_notify || '' }}
+          FORCE_NOTIFY: ${{ github.event_name == 'workflow_dispatch' && inputs.force_notify || '' }}
         run: python silver_bot.py
 
       - name: Save cache (silver & gold state)
