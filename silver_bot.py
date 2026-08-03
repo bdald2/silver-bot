@@ -443,25 +443,6 @@ def verify_telegram_token() -> bool:
     return True
 
 
-def build_test_message(silver_prices, gold_prices) -> str:
-    """수동 실행 확인용 테스트 메시지 생성. 실제 시세 알림 형식과 구분되게 표기."""
-    def fmt(prices):
-        return " / ".join(f"{p:,}" for p in prices) if prices else "추출 실패"
-
-    return "\n".join([
-        "🧪 [테스트] silver-bot 알림 점검",
-        f"{now_kst_str()}",
-        "",
-        "수동 실행으로 발송된 확인용 메시지입니다.",
-        "실제 시세 변경 알림이 아닙니다.",
-        "",
-        f"▪ 은 현재가: {fmt(silver_prices)}",
-        f"▪ 금 현재가: {fmt(gold_prices)}",
-        "",
-        "캐시는 갱신되지 않았습니다.",
-    ])
-
-
 def send_telegram(message: str) -> None:
     """텔레그램 발송. 실패 시 원인을 로그에 남기고 예외를 던진다(silent fail 금지).
 
@@ -567,7 +548,32 @@ def main() -> None:
     # 캐시는 건드리지 않으며, 변경 감지 알림 정책에도 영향을 주지 않는다.
     if TEST_NOTIFY:
         print("  · TEST_NOTIFY=on — 확인용 테스트 알림 발송")
-        send_telegram(build_test_message(silver_prices, gold_prices))
+
+        # 실제 알림과 동일한 형식으로 생성해, 발송 경로뿐 아니라
+        # 메시지 레이아웃까지 그대로 확인할 수 있게 한다.
+        test_silver_dir = determine_direction(silver_prices, last_silver) if silver_prices else ""
+        test_gold_dir = determine_direction(gold_prices, last_gold) if gold_prices else ""
+        if test_silver_dir and test_gold_dir:
+            test_head = f"은 {test_silver_dir} / 금 {test_gold_dir}"
+        else:
+            test_head = test_silver_dir or test_gold_dir or "시세 확인"
+
+        test_msg = build_combined_message(
+            silver_post=silver_post,
+            gold_post=gold_post,
+            silver_content=silver_content,
+            silver_prices=silver_prices,
+            gold_content=gold_content,
+            gold_prices=gold_prices,
+            head_line=test_head,
+        )
+        test_msg = (
+            "🧪 [테스트 발송] 실제 시세 변경 알림이 아닙니다\n"
+            "─────────────────────\n\n"
+            + test_msg
+        )
+
+        send_telegram(test_msg)
         print("  ✓ 테스트 알림 발송 완료 (캐시 미갱신 / 변경 감지 로직 미실행)")
         return
 
