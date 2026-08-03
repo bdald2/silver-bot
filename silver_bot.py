@@ -397,15 +397,95 @@ def build_combined_message(
     return "\n\n".join(parts)
 
 
+def verify_telegram_token() -> bool:
+    """토큰 유효성 자가점검. getMe만 호출하며 메시지는 전혀 보내지 않는다.
+
+    알림 정책과 무관한 순수 진단용. 시세 변동이 없어 발송이 일어나지 않는 날에도
+    토큰이 살아있는지 매 실행 로그로 확인할 수 있게 한다.
+    """
+    if not TELEGRAM_TOKEN or not CHAT_ID:
+        print("  ✖ 토큰 점검: TELEGRAM_TOKEN 또는 CHAT_ID 환경변수가 비어 있음")
+        print("    → GitHub Secrets(TELEGRAM_TOKEN / CHAT_ID) 등록 상태 확인 필요")
+        return False
+
+    try:
+        resp = requests.get(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getMe", timeout=10
+        )
+    except requests.RequestException as e:
+        print(f"  ⚠ 토큰 점검: 텔레그램 API 접속 실패 ({e}) — 점검 건너뜀")
+        return False
+
+    if resp.status_code == 401:
+        print("  ✖ 토큰 점검 실패: 401 Unauthorized")
+        print("    → 토큰이 폐기(revoke)되었거나 잘못 등록됨. GitHub Secrets 갱신 필요")
+        return False
+
+    if resp.status_code != 200:
+        print(f"  ✖ 토큰 점검 실패: HTTP {resp.status_code} / {resp.text[:200]}")
+        return False
+
+    try:
+        info = resp.json().get("result", {})
+    except ValueError:
+        print(f"  ✖ 토큰 점검 실패: 응답 파싱 불가 / {resp.text[:200]}")
+        return False
+
+    print(
+        f"  ✓ 토큰 점검 정상 — 봇: {info.get('first_name', '?')} "
+        f"(@{info.get('username', '?')}, id={info.get('id', '?')})"
+    )
+    return True
+
+
 def send_telegram(message: str) -> None:
+    """텔레그램 발송. 실패 시 원인을 로그에 남기고 예외를 던진다(silent fail 금지).
+
+    기존 구현은 응답 코드를 확인하지 않아, 토큰이 폐기되어 401이 떨어져도
+    워크플로가 초록불로 끝나며 발송 실패를 알 수 없었다.
+    """
+    if not TELEGRAM_TOKEN or not CHAT_ID:
+        raise RuntimeError(
+            "TELEGRAM_TOKEN 또는 CHAT_ID 환경변수가 비어 있음 — GitHub Secrets 확인 필요"
+        )
+
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": CHAT_ID, "text": message}
-    requests.post(url, data=data, timeout=10)
+
+    try:
+        resp = requests.post(url, data=data, timeout=10)
+    except requests.RequestException as e:
+        print(f"  ✖ 텔레그램 요청 실패(네트워크/타임아웃): {e}")
+        raise
+
+    if resp.status_code != 200:
+        print(f"  ✖ 텔레그램 발송 실패 — HTTP {resp.status_code}")
+        print(f"    응답: {resp.text[:500]}")
+        if resp.status_code == 401:
+            print("    → 401 Unauthorized: 토큰 폐기/오등록. GitHub Secrets 갱신 필요")
+        elif resp.status_code == 400:
+            print("    → 400 Bad Request: CHAT_ID 오류 또는 메시지 형식 문제 확인 필요")
+        elif resp.status_code == 403:
+            print("    → 403 Forbidden: 봇이 차단되었거나 대화가 시작되지 않음")
+        raise RuntimeError(f"텔레그램 발송 실패 (HTTP {resp.status_code})")
+
+    try:
+        body = resp.json()
+    except ValueError:
+        print(f"  ✖ 텔레그램 응답 파싱 불가: {resp.text[:300]}")
+        raise RuntimeError("텔레그램 응답 파싱 불가")
+
+    if not body.get("ok"):
+        print(f"  ✖ 텔레그램 API 오류 응답: {body}")
+        raise RuntimeError(f"텔레그램 API ok=false: {body.get('description')}")
 
 
 # ───────── 메인 ─────────
 def main() -> None:
     print(f"[{now_kst_str()}] silver-bot 실행 시작 (MODE={MODE})")
+
+    # 0) 토큰 자가점검 (메시지 발송 없음 / 진단 전용)
+    verify_telegram_token()
 
     # 1) RSS에서 현재 시점의 금/은 글 검색
     silver_post, gold_post = get_latest_silver_and_gold_posts()
