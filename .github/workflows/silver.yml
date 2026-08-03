@@ -7,6 +7,11 @@ on:
     # 매일 24시간 매시 :17, :47 실행 (비-라운드 분으로 큐 혼잡 회피)
     - cron: '17,47 * * * *'
   workflow_dispatch:
+    inputs:
+      test_notify:
+        description: '확인용 테스트 알림 1회 발송 (시세 변경과 무관, 캐시 미갱신)'
+        type: boolean
+        default: false
 
 # keepalive 빈 커밋 push를 위해 쓰기 권한 필요
 permissions:
@@ -45,6 +50,8 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           MODE: combined_check
+          # 스케줄 실행 시 inputs가 없어 빈 문자열이 되고, event_name 조건으로 이중 차단
+          TEST_NOTIFY: ${{ github.event_name == 'workflow_dispatch' && inputs.test_notify || '' }}
         run: python silver_bot.py
 
       - name: Save cache (silver & gold state)
