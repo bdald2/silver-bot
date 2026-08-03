@@ -2,7 +2,10 @@ name: Silver & Gold Price Bot
 
 on:
   schedule:
-    - cron: '17,47 * * * 1-5'   # KST 평일 매시 :17, :47 (비-라운드 분으로 큐 혼잡 회피)
+    # GitHub Actions cron은 UTC 기준. 요일 조건을 쓰면 KST와 하루 경계가 어긋나
+    # 한국시간 월요일 새벽이 비고 토요일 새벽이 도는 문제가 생기므로 요일 조건 제거.
+    # 매일 24시간 매시 :17, :47 실행 (비-라운드 분으로 큐 혼잡 회피)
+    - cron: '17,47 * * * *'
   workflow_dispatch:
 
 # keepalive 빈 커밋 push를 위해 쓰기 권한 필요
@@ -12,7 +15,7 @@ permissions:
 jobs:
   check-price:
     runs-on: ubuntu-latest
-    if: github.event.schedule == '17,47 * * * 1-5' || github.event_name == 'workflow_dispatch'
+    if: github.event.schedule == '17,47 * * * *' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
