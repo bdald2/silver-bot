@@ -34,6 +34,11 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 CHAT_ID = os.environ.get("CHAT_ID", "")
 MODE = os.environ.get("MODE", "combined_check")
 
+# 수동 실행(workflow_dispatch) 전용 테스트 알림 스위치.
+# 스케줄 실행에는 inputs가 존재하지 않아 빈 문자열이 되므로 절대 발동하지 않는다.
+# 워크플로 쪽에서도 event_name == 'workflow_dispatch' 조건으로 이중 차단한다.
+TEST_NOTIFY = os.environ.get("TEST_NOTIFY", "").strip().lower() in ("1", "true", "yes")
+
 LAST_SILVER_FILE = "last_silver_state.txt"
 LAST_GOLD_FILE = "last_gold_state.txt"
 
@@ -438,6 +443,25 @@ def verify_telegram_token() -> bool:
     return True
 
 
+def build_test_message(silver_prices, gold_prices) -> str:
+    """수동 실행 확인용 테스트 메시지 생성. 실제 시세 알림 형식과 구분되게 표기."""
+    def fmt(prices):
+        return " / ".join(f"{p:,}" for p in prices) if prices else "추출 실패"
+
+    return "\n".join([
+        "🧪 [테스트] silver-bot 알림 점검",
+        f"{now_kst_str()}",
+        "",
+        "수동 실행으로 발송된 확인용 메시지입니다.",
+        "실제 시세 변경 알림이 아닙니다.",
+        "",
+        f"▪ 은 현재가: {fmt(silver_prices)}",
+        f"▪ 금 현재가: {fmt(gold_prices)}",
+        "",
+        "캐시는 갱신되지 않았습니다.",
+    ])
+
+
 def send_telegram(message: str) -> None:
     """텔레그램 발송. 실패 시 원인을 로그에 남기고 예외를 던진다(silent fail 금지).
 
@@ -537,6 +561,15 @@ def main() -> None:
     print(f"  · 금 현재가: {gold_prices}")
     print(f"  · 은 직전가: {last_silver}")
     print(f"  · 금 직전가: {last_gold}")
+
+    # 7-1) 테스트 알림 (수동 실행 전용)
+    # 시세 변경 여부와 무관하게 1회 발송해 발송 경로 전체를 점검한다.
+    # 캐시는 건드리지 않으며, 변경 감지 알림 정책에도 영향을 주지 않는다.
+    if TEST_NOTIFY:
+        print("  · TEST_NOTIFY=on — 확인용 테스트 알림 발송")
+        send_telegram(build_test_message(silver_prices, gold_prices))
+        print("  ✓ 테스트 알림 발송 완료 (캐시 미갱신 / 변경 감지 로직 미실행)")
+        return
 
     if MODE not in ("check", "combined_check"):
         print(f"  ✖ 알 수 없는 MODE: {MODE} — 종료")
