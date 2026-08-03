@@ -34,10 +34,11 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 CHAT_ID = os.environ.get("CHAT_ID", "")
 MODE = os.environ.get("MODE", "combined_check")
 
-# 수동 실행(workflow_dispatch) 전용 테스트 알림 스위치.
+# 수동 실행(workflow_dispatch) 전용 강제 발송 스위치.
+# 코드 수정 후 알림이 정상 발송되는지 확인하는 용도이며, 실제 알림과 형식이 완전히 동일하다.
 # 스케줄 실행에는 inputs가 존재하지 않아 빈 문자열이 되므로 절대 발동하지 않는다.
 # 워크플로 쪽에서도 event_name == 'workflow_dispatch' 조건으로 이중 차단한다.
-TEST_NOTIFY = os.environ.get("TEST_NOTIFY", "").strip().lower() in ("1", "true", "yes")
+FORCE_NOTIFY = os.environ.get("FORCE_NOTIFY", "").strip().lower() in ("1", "true", "yes")
 
 LAST_SILVER_FILE = "last_silver_state.txt"
 LAST_GOLD_FILE = "last_gold_state.txt"
@@ -546,35 +547,32 @@ def main() -> None:
     # 7-1) 테스트 알림 (수동 실행 전용)
     # 시세 변경 여부와 무관하게 1회 발송해 발송 경로 전체를 점검한다.
     # 캐시는 건드리지 않으며, 변경 감지 알림 정책에도 영향을 주지 않는다.
-    if TEST_NOTIFY:
-        print("  · TEST_NOTIFY=on — 확인용 테스트 알림 발송")
+    # 7-1) 강제 발송 (수동 실행 전용)
+    # 실제 알림과 완전히 동일한 형식·마킹으로 1회 발송한다.
+    # 캐시는 갱신하지 않으므로 이후 실제 변경 감지에 영향을 주지 않는다.
+    if FORCE_NOTIFY:
+        print("  · FORCE_NOTIFY=on — 시세 변경 여부와 무관하게 알림 1회 발송")
 
-        # 실제 알림과 동일한 형식으로 생성해, 발송 경로뿐 아니라
-        # 메시지 레이아웃까지 그대로 확인할 수 있게 한다.
-        test_silver_dir = determine_direction(silver_prices, last_silver) if silver_prices else ""
-        test_gold_dir = determine_direction(gold_prices, last_gold) if gold_prices else ""
-        if test_silver_dir and test_gold_dir:
-            test_head = f"은 {test_silver_dir} / 금 {test_gold_dir}"
+        forced_silver = mark_changed_lines(silver_content, silver_prices, last_silver)
+        forced_gold = mark_changed_lines(gold_content, gold_prices, last_gold)
+
+        f_silver_dir = determine_direction(silver_prices, last_silver) if silver_prices else ""
+        f_gold_dir = determine_direction(gold_prices, last_gold) if gold_prices else ""
+        if f_silver_dir and f_gold_dir:
+            f_head = f"은 {f_silver_dir} / 금 {f_gold_dir}"
         else:
-            test_head = test_silver_dir or test_gold_dir or "시세 확인"
+            f_head = f_silver_dir or f_gold_dir or "시세 확인"
 
-        test_msg = build_combined_message(
+        send_telegram(build_combined_message(
             silver_post=silver_post,
             gold_post=gold_post,
-            silver_content=silver_content,
+            silver_content=forced_silver,
             silver_prices=silver_prices,
-            gold_content=gold_content,
+            gold_content=forced_gold,
             gold_prices=gold_prices,
-            head_line=test_head,
-        )
-        test_msg = (
-            "🧪 [테스트 발송] 실제 시세 변경 알림이 아닙니다\n"
-            "─────────────────────\n\n"
-            + test_msg
-        )
-
-        send_telegram(test_msg)
-        print("  ✓ 테스트 알림 발송 완료 (캐시 미갱신 / 변경 감지 로직 미실행)")
+            head_line=f_head,
+        ))
+        print("  ✓ 강제 발송 완료 (캐시 미갱신 / 변경 감지 로직 미실행)")
         return
 
     if MODE not in ("check", "combined_check"):
